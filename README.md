@@ -134,7 +134,12 @@ Direct helper calls can distinguish an ignored argument from a returned value.
 More complex mutation, aliasing, function-valued dispatch, switch/select,
 deferred/concurrent execution, arbitrary callbacks, and general loop-carried
 state remain uncertain. Unresolved calls invalidate reference-bearing arguments
-and receivers rather than every unrelated local. Channel receives are flagged
+and receivers rather than every unrelated local. Callbacks carry potentially
+written captures through local bindings, helper returns and aggregates. When an
+unresolved call receives such a callback, affected assertions carry a
+`callback-effect` diagnostic; this does not prove the callback runs. Captured
+reference values are treated conservatively even when only read by the callback.
+Channel receives are flagged
 because temporal dependencies are not modeled. No general temporal analysis or
 proof of conditional/subtest/callback reachability is attempted.
 

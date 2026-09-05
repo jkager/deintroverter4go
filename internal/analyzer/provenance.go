@@ -27,6 +27,7 @@ type value struct {
 	sources     []Source
 	diagnostics []Diagnostic
 	closure     *ast.FuncLit
+	captures    []slot
 	results     []value
 }
 
@@ -35,6 +36,11 @@ func merge(values ...value) value {
 	for _, v := range values {
 		out.flags |= v.flags
 		out.truncated = out.truncated || v.truncated
+		for _, capture := range v.captures {
+			if !slices.Contains(out.captures, capture) {
+				out.captures = append(out.captures, capture)
+			}
+		}
 		for _, s := range v.sources {
 			if !slices.Contains(out.sources, s) {
 				if len(out.sources) < evidenceLimit {
@@ -158,6 +164,17 @@ func (w *testWalker) eval(x ast.Expr, e *environment, guard value) value {
 	}
 	if s, ok := a.location(x, e); ok {
 		if v, ok := e.values[s]; ok {
+			// A callback may have been assigned to a field after construction.
+			// Carry its effects when the containing value is passed to a call.
+			captures := value{}
+			for key, field := range e.values {
+				if key.root == s.root && strings.HasPrefix(key.field, s.field+".") {
+					captures = merge(captures, value{captures: field.captures})
+				}
+			}
+			if len(captures.captures) > 0 {
+				v.captures = merge(v, captures).captures
+			}
 			return v
 		}
 	}
@@ -167,7 +184,7 @@ func (w *testWalker) eval(x ast.Expr, e *environment, guard value) value {
 	case *ast.Ident:
 		return a.source(a.objectOf(x))
 	case *ast.FuncLit:
-		return value{closure: x}
+		return value{closure: x, captures: w.callbackWrites(x)}
 	case *ast.CallExpr:
 		return w.call(x, e, guard)
 	case *ast.SelectorExpr:
@@ -235,12 +252,7 @@ func (w *testWalker) invalidate(x ast.Expr, e *environment, v value) {
 		return
 	}
 	if s, ok := w.analyzer.location(x, e); ok {
-		e.values[s] = merge(e.values[s], v)
-		for k, old := range e.values {
-			if k.root == s.root && strings.HasPrefix(k.field, s.field+".") {
-				e.values[k] = merge(old, v)
-			}
-		}
+		e.invalidate(s, v)
 		return
 	}
 	ast.Inspect(x, func(n ast.Node) bool {
@@ -271,4 +283,77 @@ func (w *testWalker) mergeBranches(e, left, right *environment, pos token.Pos) {
 			e.values[k] = merge(l, r, w.diagnostic(pos, "branch-merge", "value differs across control-flow paths"))
 		}
 	}
+}
+
+func (e *environment) invalidate(s slot, v value) {
+	e.values[s] = merge(e.values[s], v)
+	for k, old := range e.values {
+		if k.root == s.root && strings.HasPrefix(k.field, s.field+".") {
+			e.values[k] = merge(old, v)
+		}
+	}
+}
+
+// callbackWrites records potentially written captures, not the closure's locals.
+// Resolve reference aliases when the callback escapes, since captured variables
+// may be rebound between closure construction and the call.
+func (w *testWalker) callbackWrites(fn *ast.FuncLit) []slot {
+	var captures []slot
+	unaliased := newEnvironment()
+	add := func(x ast.Expr) {
+		for {
+			index, ok := x.(*ast.IndexExpr)
+			if !ok {
+				break
+			}
+			x = index.X
+		}
+		s, ok := w.analyzer.location(x, unaliased)
+		if !ok {
+			return
+		}
+		obj, ok := s.root.(*types.Var)
+		if !ok || obj.IsField() || (obj.Pos() >= fn.Pos() && obj.Pos() < fn.End()) {
+			return
+		}
+		if !slices.Contains(captures, s) {
+			captures = append(captures, s)
+		}
+	}
+	ast.Inspect(fn.Body, func(n ast.Node) bool {
+		switch n := n.(type) {
+		case *ast.AssignStmt:
+			for _, lhs := range n.Lhs {
+				add(lhs)
+			}
+		case *ast.IncDecStmt:
+			add(n.X)
+		case *ast.UnaryExpr:
+			if n.Op == token.AND {
+				add(n.X)
+			}
+		case *ast.Ident:
+			// A referenced slice/map/pointer can be changed through a callee,
+			// even without an assignment in this callback's own body.
+			if referenceType(w.analyzer.pkg.TypesInfo.TypeOf(n)) {
+				add(n)
+			}
+		}
+		return true
+	})
+	return captures
+}
+
+func (w *testWalker) escapeCallbacks(v value, e *environment, pos token.Pos) value {
+	if len(v.captures) == 0 {
+		return v
+	}
+	issue := w.diagnostic(pos, "callback-effect", "unresolved call may execute a callback that writes captured state")
+	for _, capture := range v.captures {
+		if target, ok := e.aliases[capture.root]; ok {
+			capture = slot{root: target.root, field: target.field + capture.field}
+		}
+		e.invalidate(capture, issue)
+	}
+	return merge(v, issue)
 }

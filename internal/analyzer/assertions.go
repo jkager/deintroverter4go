@@ -93,6 +93,9 @@ func (w *testWalker) call(c *ast.CallExpr, e *environment, guard value) value {
 				v = merge(v, w.callback(c.Args[i], e, guard, true))
 			} else {
 				arg := w.eval(c.Args[i], e, guard)
+				if _, ok := sig.Params().At(i).Type().Underlying().(*types.Signature); ok {
+					arg = w.escapeCallbacks(arg, e, c.Pos())
+				}
 				if arg.closure != nil {
 					arg = merge(arg, w.diagnostic(c.Args[i].Pos(), "callback", "this assertion callback is not modeled"))
 				}
@@ -113,7 +116,7 @@ func (w *testWalker) call(c *ast.CallExpr, e *environment, guard value) value {
 			for _, arg := range c.Args {
 				v = merge(v, w.eval(arg, e, guard))
 			}
-			return v
+			return w.escapeCallbacks(v, e, c.Pos())
 		}
 	}
 	if fn, ok := a.objectOf(c.Fun).(*types.Func); ok {
@@ -131,7 +134,7 @@ func (w *testWalker) call(c *ast.CallExpr, e *environment, guard value) value {
 						w.invalidate(arg, e, v)
 					}
 				}
-				return v
+				return w.escapeCallbacks(v, e, c.Pos())
 			}
 		}
 		if d, ok := a.declarations[fn]; ok && a.source(fn).flags&helper != 0 {
@@ -143,6 +146,9 @@ func (w *testWalker) call(c *ast.CallExpr, e *environment, guard value) value {
 		return w.invokeClosure(fn, c.Args, e, guard)
 	}
 	v := a.source(a.objectOf(c.Fun))
+	if _, ok := a.objectOf(c.Fun).(*types.Var); ok {
+		v = merge(v, w.eval(c.Fun, e, guard))
+	}
 	if recv := receiver(c); recv != nil {
 		v = merge(v, w.eval(recv, e, guard))
 	}
@@ -176,7 +182,7 @@ func (w *testWalker) call(c *ast.CallExpr, e *environment, guard value) value {
 			}
 		}
 	}
-	return v
+	return w.escapeCallbacks(v, e, c.Pos())
 }
 func receiver(c *ast.CallExpr) ast.Expr {
 	if s, ok := c.Fun.(*ast.SelectorExpr); ok {

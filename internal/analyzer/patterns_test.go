@@ -46,6 +46,7 @@ func (*CollectT) Errorf(string,...any){}
 func New(TestingT)*Assertions{return &Assertions{}}
 func Equal(TestingT,any,any,...any)bool{return true}
 func True(TestingT,bool,...any)bool{return true}
+func NotPanics(TestingT,func(),...any)bool{return true}
 func (a *Assertions) Equal(any,any,...any)bool{return true}
 func Eventually(TestingT,func()bool,time.Duration,time.Duration,...any)bool{return true}
 func EventuallyWithT(TestingT,func(*CollectT),time.Duration,time.Duration,...any)bool{return true}
@@ -109,6 +110,7 @@ func TestAfter(t *testing.T){now:=time.Now();<-audit.Ready();check.True(t,time.S
 func TestProperty(t *testing.T){rapid.Check(t,func(rt *rapid.T){if audit.Add(1,1)!=2{rt.Fatalf("bad")}})}
 func TestStateMachine(t *testing.T){rapid.Check(t,func(rt *rapid.T){rt.Repeat(rapid.StateMachineActions(struct{}{}))})}
 func ready()bool{return audit.Add(1,1)==2}
+func TestNotPanicsCallback(t *testing.T){called:=false;check.NotPanics(t,func(){called=true});check.True(t,called)}
 func TestEventually(t *testing.T){check.Eventually(t,func()bool{return audit.Add(1,1)==2},time.Second,time.Millisecond)}
 func TestNamedCallback(t *testing.T){check.Eventually(t,ready,time.Second,time.Millisecond)}
 func TestEventuallyWithT(t *testing.T){check.EventuallyWithT(t,func(c *check.CollectT){check.Equal(c,2,audit.Add(1,1))},time.Second,time.Millisecond)}
@@ -158,7 +160,7 @@ func (s *Suite) TestSubtest(){s.Run("reset",func(){s.Equal(2,s.got)})}
 		"TestMixed": "extroverted", "TestHelperReturn": "extroverted", "TestDiscardedHelperArgument": "introverted", "TestWrapper": "extroverted",
 		"TestRecursion": "questionable", "TestNamedResult": "extroverted", "TestExpressionAssertion": "extroverted", "TestUnrelatedCall": "extroverted",
 		"TestRecorder": "questionable", "TestAfter": "questionable", "TestProperty": "extroverted", "TestStateMachine": "questionable",
-		"TestEventually": "extroverted", "TestNamedCallback": "extroverted", "TestEventuallyWithT": "extroverted", "TestClosure": "extroverted",
+		"TestNotPanicsCallback": "questionable", "TestEventually": "extroverted", "TestNamedCallback": "extroverted", "TestEventuallyWithT": "extroverted", "TestClosure": "extroverted",
 		"TestPackageLiteral": "introverted", "TestPackageProduction": "extroverted", "TestTable": "container", "TestTable/row": "extroverted",
 		"ExampleAdd": "questionable", "FuzzAdd": "questionable", "TestSuite": "container", "TestSuite/TestValue": "extroverted",
 		"TestSuite/TestLiteral": "introverted", "TestSuite/TestSubtest": "container", "TestSuite/TestSubtest/reset": "introverted",
@@ -175,6 +177,10 @@ func (s *Suite) TestSubtest(){s.Run("reset",func(){s.Equal(2,s.got)})}
 	}
 	if len(findings) != len(want) {
 		t.Errorf("got %d entries, want %d", len(findings), len(want))
+	}
+	callback := byName["TestNotPanicsCallback"]
+	if len(callback.Assertions) != 2 || callback.Assertions[1].Verdict != "questionable" {
+		t.Errorf("unmodeled assertion callback lost its captured write: %+v", callback)
 	}
 	mixed := byName["TestMixed"]
 	if len(mixed.Assertions) != 2 || mixed.Assertions[0].Verdict != "extroverted" || mixed.Assertions[1].Verdict != "introverted" {
