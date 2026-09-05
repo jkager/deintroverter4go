@@ -45,13 +45,13 @@ Use repeatable `-helper-package` flags for test infrastructure written in ordina
 matching packages are loaded so helper bodies remain available, but their own
 tests are reported only if selected by the positional package patterns.
 
-For load-control-service:
+For a module with shared test helpers and fakes:
 
 ```sh
-go run . -dir /home/jens/src/work/load-control-service \
-  -helper-package test/golang/... \
+go run . -dir /path/to/module \
+  -helper-package test/helpers/... \
   -helper-package internal/fakes/... \
-  -format json ./... > /tmp/lcs-test-audit.json
+  -format json ./... > audit.json
 ```
 
 Add other mock/helper packages appropriate to the audited scope. When auditing a
