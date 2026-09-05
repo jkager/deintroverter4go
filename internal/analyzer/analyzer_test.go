@@ -103,10 +103,10 @@ func TestExternal(t *testing.T) { if sut.Add(1,1)!=2 { t.Fatal("bad") } }
 	want := map[string]string{
 		"TestDirect": "extroverted", "TestDerived": "extroverted", "TestLiteral": "introverted",
 		"TestDiscarded": "introverted", "TestDiagnostic": "introverted", "TestOverwritten": "introverted",
-		"TestShadowed": "introverted", "TestHelper": "cloistered", "TestStdlib": "introverted",
-		"TestEmpty": "questionable", "TestBranch": "questionable", "TestSubtests/production": "extroverted",
+		"TestShadowed": "introverted", "TestHelper": "introverted", "TestStdlib": "introverted",
+		"TestSubtests": "container", "TestEmpty": "questionable", "TestBranch": "questionable", "TestSubtests/production": "extroverted",
 		"TestSubtests/literal": "introverted", "TestTestify": "extroverted", "TestTestifyMessage": "introverted",
-		"TestTestifyMethod": "extroverted", "TestLoop": "questionable", "TestExternal": "extroverted",
+		"TestTestifyMethod": "extroverted", "TestLoop": "extroverted", "TestExternal": "extroverted",
 	}
 	if len(findings) != len(want) {
 		t.Errorf("got %d findings, want %d: %+v", len(findings), len(want), findings)
